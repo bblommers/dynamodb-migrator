@@ -22,5 +22,5 @@ run: venv/bin/activate
 
 test: venv/bin/activate
 	. venv/bin/activate ; \
-	venv/bin/pytest
+	venv/bin/pytest -s
 
