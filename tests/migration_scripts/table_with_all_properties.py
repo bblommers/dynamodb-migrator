@@ -1,14 +1,15 @@
 #!/usr/bin/python
 
-from migrator import dynamodb_migrator
+from migrator.dynamodb_migrator import Migrator
 from uuid import uuid4
 
 
 table_name = str(uuid4())
+migrator = Migrator()
 
 
-@dynamodb_migrator.version(1)
-@dynamodb_migrator.create(
+@migrator.version(1)
+@migrator.create(
     AttributeDefinitions=[{
         'AttributeName': 'hash_key',
         'AttributeType': 'N'

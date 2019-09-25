@@ -1,45 +1,14 @@
-import pytest
-from .mock_wrapper import mock_aws
+from importlib import reload
 from time import sleep
-
-
-@pytest.fixture(autouse=True)
-def run_around_tests():
-    yield
-    # Clean up
-    # We don't want to know about previous test-functions
-    from migrator import dynamodb_migrator
-    dynamodb_migrator._function_list.clear()
-
-
-@mock_aws
-def example_table_creation(dynamodb):
-    print('creating table')
-    dynamodb.create_table(
-        AttributeDefinitions=[{
-            'AttributeName': 'somekey',
-            'AttributeType': 'S'
-        }],
-        TableName='new_table',
-        KeySchema=[{
-            'AttributeName': 'somekey',
-            'KeyType': 'HASH'
-        }],
-        BillingMode='PAY_PER_REQUEST'
-    )
-    status = 'CREATING'
-    while status != 'ACTIVE':
-        status = dynamodb.describe_table(TableName='new_table')['Table']['TableStatus']
-        sleep(1)
-    print('created table')
-    dynamodb.delete_table(TableName='new_table')
-    print('deleted table')
+from .mock_wrapper import mock_aws
 
 
 @mock_aws
 def test_create_table_script__assert_table_is_created(dynamodb):
-    from .migration_scripts.simple_table import dynamodb_migrator
-    dynamodb_migrator.migrate()
+    from .migration_scripts import simple_table
+    reload(simple_table)  # Ensure that this script isnt already loaded
+    from .migration_scripts.simple_table import migrator
+    migrator.migrate()
     from .migration_scripts.simple_table import table_name
     #
     # Assert the table is created
@@ -48,12 +17,15 @@ def test_create_table_script__assert_table_is_created(dynamodb):
     assert table_name in table_names
     #
     dynamodb.delete_table(TableName=table_name)
+    delete_metadata_table(dynamodb)
 
 
 @mock_aws
 def test_create_table_script__assert_table_has_all_properties(dynamodb):
-    from .migration_scripts.table_with_all_properties import dynamodb_migrator
-    dynamodb_migrator.migrate()
+    from .migration_scripts import table_with_all_properties
+    reload(table_with_all_properties)  # Ensure that this script isnt already loaded
+    from .migration_scripts.table_with_all_properties import migrator
+    migrator.migrate()
     from .migration_scripts.table_with_all_properties import table_name
     #
     # Assert the table has the right properties
@@ -67,3 +39,37 @@ def test_create_table_script__assert_table_has_all_properties(dynamodb):
     assert table['ProvisionedThroughput']['WriteCapacityUnits'] == 2
     #
     dynamodb.delete_table(TableName=table_name)
+    delete_metadata_table(dynamodb)
+
+
+@mock_aws
+def test_create_table_script__assert_metadata_table_is_created(dynamodb):
+    from .migration_scripts import static_table
+    reload(static_table)  # Ensure that this script isnt already loaded
+    from .migration_scripts.static_table import migrator
+    migrator.migrate()
+    from .migration_scripts.static_table import table_name
+    #
+    # Assert the table is created
+    table_names = dynamodb.list_tables()['TableNames']
+    assert len(table_names) >= 1
+    assert 'dynamodb_migrator_metadata' in table_names
+    #
+    # Assert the correct metadata has been added
+    metadata = dynamodb.scan(TableName='dynamodb_migrator_metadata')['Items']
+    assert metadata == [{'identifier': {'S': 'dynamodb_migrator.py'},
+                         'version': {'N': '1'}}]
+    #
+    dynamodb.delete_table(TableName=table_name)
+    delete_metadata_table(dynamodb)
+
+
+def delete_metadata_table(dynamodb):
+    try:
+        dynamodb.delete_table(TableName='dynamodb_migrator_metadata')
+        while True:
+            dynamodb.describe_table(TableName='dynamodb_migrator_metadata')
+            sleep(1)
+    except dynamodb.exceptions.ResourceNotFoundException:
+        # Table might not exist (anymore)
+        pass
