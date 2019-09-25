@@ -6,6 +6,8 @@ python:
 - 3.7
 env:
 - CONNECT_TO_AWS=NO
+before_install:
+- sudo apt-get install -y ruby-coveralls
 install:
 - make lint
 script:
