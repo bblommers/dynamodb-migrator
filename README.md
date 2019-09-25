@@ -1,4 +1,5 @@
-# dynamodb-migrator
+# dynamodb-migrator 
+[![Build Status](https://travis-ci.org/bblommers/dynamodb-migrator.svg?branch=master)](https://travis-ci.org/bblommers/dynamodb-migrator)
 
 A library that helps you create and migrate DynamoDB databases.
 
