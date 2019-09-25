@@ -1,0 +1,12 @@
+dist: xenial
+language: python
+sudo: false
+python:
+- 3.6
+- 3.7
+env:
+- CONNECT_TO_AWS=NO
+install:
+- make lint
+script:
+- make test
