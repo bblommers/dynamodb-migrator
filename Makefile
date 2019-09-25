@@ -12,15 +12,16 @@ venv/bin/activate: requirements-to-freeze.txt
 	pip freeze | sort > requirements.txt
 	touch venv/bin/activate  # update so it's as new as requirements-to-freeze.txt
 
-lint: venv/bin/activate
+venv_lint: venv/bin/activate
 	. venv/bin/activate ; \
 	venv/bin/flake8
 
-run: venv/bin/activate
-	. venv/bin/activate ; \
-	python3 mycode.py
-
-test: venv/bin/activate
+venv_test: venv/bin/activate
 	. venv/bin/activate ; \
 	venv/bin/pytest -s
 
+lint:
+	flake8
+
+test:
+	pytest -s

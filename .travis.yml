@@ -9,6 +9,9 @@ env:
 before_install:
 - sudo apt-get install -y ruby-coveralls
 install:
+- |
+  travis_retry pip install -r requirements-to-freeze.txt
+before_script:
 - make lint
 script:
 - make test
