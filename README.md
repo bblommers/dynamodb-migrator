@@ -13,8 +13,19 @@ This library will help  you do just that.
  
 ## Example 
 ```python
-@dynamodb_migrator.version(1)
-@dynamodb_migrator.create(TableName='my_first_table')
+from migrator.dynamodb_migrator import Migrator
+migrator = Migrator()
+@migrator.version(1)
+@migrator.create(AttributeDefinitions=[{
+        'AttributeName': 'hash_key',
+        'AttributeType': 'N'
+    }],
+    TableName='my_new_table',
+    KeySchema=[{
+        'AttributeName': 'hash_key',
+        'KeyType': 'HASH'
+    }],
+    BillingMode='PAY_PER_REQUEST')
 def v1(created_table):
     print("Table created using the kwargs provided")
     print("Note that the keyword-args are passed onto boto as is")
@@ -22,8 +33,8 @@ def v1(created_table):
 
 
 @NotYetImplemented
-@dynamodb_migrator.version(2)
-@dynamodb_migrator.add_index("secondary_index_we_forgot_about")
+@migrator.version(2)
+@migrator.add_index("secondary_index_we_forgot_about")
 def v2(migrate):
     print("About to:")
     print(" - Create new table (first_table_v2) with the appropriate index")
@@ -35,8 +46,8 @@ def v2(migrate):
 
 
 @NotYetImplemented
-@dynamodb_migrator.version(3)
-@dynamodb_migrator.delete_table("first_table")
+@migrator.version(3)
+@migrator.delete_table("first_table")
 def v3(migrate):
     print("About to delete table")
     print("Ensure that all upstream applications point to the new table, before adding this part to the pipeline!")
@@ -45,8 +56,8 @@ def v3(migrate):
 
 
 @NotYetImplemented
-@dynamodb_migrator.version(4)
-@dynamodb_migrator.convert(lambda item -> {'id': translate(item.id)})
+@migrator.version(4)
+@migrator.convert(lambda item -> {'id': translate(item.id)})
 def v4(migrate):
     print("About to:")
     print(" - Create new table (first_table_v4)")
