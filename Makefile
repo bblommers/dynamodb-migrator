@@ -48,7 +48,7 @@ endif
 
 check-local-changes:
 	RUN=0
-	git diff --no-ext-diff --quiet --exit-code || RUN=1
+	git diff --no-ext-diff --quiet --exit-code && RUN=1
 	if [ $RUN = 1 ]; then
 		$(error You have local changes! Please checkout from master)
 	fi
