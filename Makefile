@@ -25,3 +25,29 @@ lint:
 
 test:
 	pytest -s
+
+release: check-version check-local-changes venv/bin/activate
+	@. venv/bin/activate ; \
+	echo Versioning... ; \
+	awk '{sub(/'[0-9.]+'/,"${VERSION}")}1' src/migrator/__init__.py > temp.txt && mv temp.txt src/migrator/__init__.py; \
+	git add src/migrator/__init__.py
+	git commit -m "Release ${VERSION}"
+	echo Tagging... ; \
+	git tag -a ${VERSION} -m "Release of version ${VERSION}"
+	echo Pushing... ; \
+	git push --follow-tags
+	echo "Packaging..."; \
+	python3 setup.py sdist bdist_wheel > /dev/null 2>&1; \
+	echo "Releasing to PyPi..."; \
+	python3 -m twine upload dist/*${VERSION}*
+
+check-version:
+ifndef VERSION
+	$(error VERSION ${VERSION} is undefined)
+endif
+
+check-local-changes:
+	CHANGED=$(git status --porcelain)
+	if CHANGED:
+		$(error You have local changes! Please checkout from master)
+	fi

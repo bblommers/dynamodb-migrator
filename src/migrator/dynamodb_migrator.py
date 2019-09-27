@@ -66,7 +66,7 @@ class Migrator():
             self._logger.debug(f"Creating table '{table['table_properties']['TableName']}'")
             table_name = table['table_properties']['TableName']
             if self._table_exists():
-                self._logger.debug(f"Table '{self._current_identifier}' has already been created")
+                self._logger.debug(f"Table with identifier '{self._current_identifier}' has already been created")
             else:
                 created_table = self._dynamodb.create_table(**table['table_properties'])
                 self._dynamodb.put_item(
