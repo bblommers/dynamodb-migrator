@@ -26,11 +26,11 @@ migrator = Migrator(identifier='make examples/simple_table.py')
 def v1(created_table):
     assert created_table['TableName'] == table_name
     assert created_table['TableStatus'] == 'ACTIVE'
-    print("===================")
-    print("Script has finished")
-    print("We can now use the created table as appropriate")
-    print("As this is only an example, we'll delete the tables again, so that we're not incurring unexpected costs")
-    print("This might take a while...")
+    print("===================")  # noqa: T001
+    print("Script has finished")  # noqa: T001
+    print("We can now use the created table as appropriate")  # noqa: T001
+    print("As this is only an example, we'll delete the tables again, so that we're not incurring unexpected costs")  # noqa: T001
+    print("This might take a while...")  # noqa: T001
     delete_table(table_name)
     delete_table('dynamodb_migrator_metadata')
 
