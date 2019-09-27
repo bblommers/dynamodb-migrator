@@ -47,8 +47,11 @@ ifndef VERSION
 endif
 
 check-local-changes:
-	RUN=0
-	git diff --no-ext-diff --quiet --exit-code && RUN=1
-	if [ $RUN = 1 ]; then
+	LOCAL_CHANGES=0
+	git diff --no-ext-diff --quiet --exit-code && LOCAL_CHANGES=1
+	if [ $LOCAL_CHANGES = 0 ]; then
+		LOCAL_CHANGES=`git ls-files --exclude-standard --others| wc -l`
+	fi
+	if ! [ $LOCAL_CHANGES = 0 ]; then
 		$(error You have local changes! Please checkout from master)
 	fi
