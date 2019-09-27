@@ -23,7 +23,7 @@ def get_version():
 
 
 setuptools.setup(
-    name="dynamodb-migrator-bblommers",
+    name="dynamodb-migrator",
     version=get_version(),
     author="Bert Blommers",
     author_email="info@bertblommers.nl",
