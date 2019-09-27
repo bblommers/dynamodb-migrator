@@ -47,7 +47,7 @@ ifndef VERSION
 endif
 
 check-local-changes:
-	CHANGED=$(git status --porcelain)
+	CHANGED=$(git diff --no-ext-diff --quiet --exit-code)
 	if CHANGED:
 		$(error You have local changes! Please checkout from master)
 	fi
