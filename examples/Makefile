@@ -5,6 +5,6 @@ venv/bin/activate:
 	pip install -r requirements.txt
 	touch venv/bin/activate
 
-example: venv/bin/activate
+customer_table: venv/bin/activate
 	@. venv/bin/activate ; \
-	python simple_table.py
+	python customer_table.py

@@ -7,19 +7,19 @@ from uuid import uuid4
 
 
 dynamodb = boto3.client('dynamodb')
-table_name = str(uuid4())
-migrator = Migrator(identifier='make examples/simple_table.py')
+table_name = 'customers'
+migrator = Migrator(identifier='make examples/customer_table.py')
 
 
 @migrator.version(1)
 @migrator.create(
     AttributeDefinitions=[{
-        'AttributeName': 'hash_key',
+        'AttributeName': 'customer_nr',
         'AttributeType': 'N'
     }],
     TableName=table_name,
     KeySchema=[{
-        'AttributeName': 'hash_key',
+        'AttributeName': 'customer_nr',
         'KeyType': 'HASH'
     }],
     BillingMode='PAY_PER_REQUEST')

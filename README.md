@@ -14,7 +14,7 @@ This library will help  you do just that.
  - Execute the migration script as a step in the build pipeline
  - Add to the migration-script as required
  
-## Example 
+## Example Script
 ```python
 from migrator.dynamodb_migrator import Migrator
 migrator = Migrator()
@@ -72,3 +72,6 @@ def v4(migrate):
     print("Table with new data is ready to use")
 
 ```
+
+## Examples
+See the [examples](examples)-folder.
