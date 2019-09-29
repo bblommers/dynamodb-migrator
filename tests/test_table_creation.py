@@ -1,6 +1,7 @@
 from importlib import reload
 from time import sleep
 from .mock_wrapper import mock_aws
+from migrator.exceptions.MigratorScriptException import MigratorScriptException
 
 
 @mock_aws
@@ -62,6 +63,16 @@ def test_create_table_script__assert_metadata_table_is_created(dynamodb):
     #
     dynamodb.delete_table(TableName=table_name)
     delete_metadata_table(dynamodb)
+
+
+@mock_aws
+def test_create_table_script__assert_error_when_there_are_multiple_create_statements(dynamodb):
+    try:
+        from .migration_scripts import multiple_create_table
+        reload(multiple_create_table)  # Ensure that this script isnt already loaded
+        assert True, "Script execution should fail, as only a single create-annotation per script is allowed"
+    except MigratorScriptException:
+        delete_metadata_table(dynamodb)
 
 
 def delete_metadata_table(dynamodb):

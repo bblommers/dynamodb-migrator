@@ -3,6 +3,7 @@ import logging
 import os
 from functools import wraps
 from time import sleep
+from migrator.exceptions.MigratorScriptException import MigratorScriptException
 
 
 class Migrator():
@@ -19,6 +20,7 @@ class Migrator():
         self._function_list = []
         self._current_identifier = identifier if identifier else os.path.basename(__file__)
         self._get_or_create_metadata_table()
+        self._table_created = False
 
     def _get_or_create_metadata_table(self):
         try:
@@ -53,10 +55,17 @@ class Migrator():
         return inner_function
 
     def create(self, **kwargs):
+        if self._table_created:
+            self._logger.error("Unable to execute script")
+            self._logger.error("Ensure that you have only one create-annotation per script")
+            self._logger.error("Each table should have it's own script")
+            raise MigratorScriptException("Unable to create multiple tables per script")
+
         def inner_function(function):
             self._function_list.append({'identifier': self._current_identifier,
                                         'table_properties': kwargs,
                                         'func': function})
+            self._table_created = True
         return inner_function
 
     def migrate(self):

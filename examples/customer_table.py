@@ -3,7 +3,6 @@
 import boto3
 from migrator.dynamodb_migrator import Migrator
 from time import sleep
-from uuid import uuid4
 
 
 dynamodb = boto3.client('dynamodb')
