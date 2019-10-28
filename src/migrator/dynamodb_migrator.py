@@ -1,9 +1,9 @@
 import logging
 import os
-from functools import wraps
 from migrator.exceptions.MigratorScriptException import MigratorScriptException
 from migrator.steps.BaseStep import BaseStep
 from migrator.steps.CreateTableStep import CreateTableStep
+from migrator.steps.AddIndexStep import AddIndexStep
 
 
 class Migrator():
@@ -16,17 +16,18 @@ class Migrator():
         self._ch.setFormatter(self._formatter)
         self._logger.addHandler(self._ch)
         self._logger.setLevel(logging.DEBUG)
+        self._functions = []
         self._steps = []
-        self._steps.append(BaseStep())
+        self._version = None
         self._current_identifier = identifier if identifier else os.path.basename(__file__)
         self._table_created = False
+        BaseStep().execute()
 
     def version(self, version_number):
-        def inner_function(function):
-            @wraps(function)
-            def wrapper(*args, **kwargs):
-                self.function(*args, **kwargs)
-            return wrapper
+        self._version = version_number
+
+        def inner_function(func):
+            pass
         return inner_function
 
     def create(self, **kwargs):
@@ -37,14 +38,17 @@ class Migrator():
             raise MigratorScriptException("Unable to create multiple tables per script")
 
         def inner_function(function):
-            self._steps.append(CreateTableStep(identifier=self._current_identifier,
-                                               properties=kwargs,
-                                               func=function))
+            created_table = CreateTableStep(identifier=self._current_identifier,
+                                            version=self._version,
+                                            properties=kwargs).execute()
             self._table_created = True
+            return function(created_table)
         return inner_function
 
-    def migrate(self):
-        if not self._steps:
-            self._logger.warning("No migration-steps have been found")
-        for step in self._steps:
-            step.execute()
+    def add_indexes(self, **kwargs):
+        def inner_function(function):
+            created_table = AddIndexStep(identifier=self._current_identifier,
+                                         version=self._version,
+                                         properties=kwargs).execute()
+            return function(created_table)
+        return inner_function

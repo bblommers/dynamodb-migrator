@@ -19,33 +19,27 @@ This library will help  you do just that.
 from migrator.dynamodb_migrator import Migrator
 migrator = Migrator()
 @migrator.version(1)
-@migrator.create(AttributeDefinitions=[{
-        'AttributeName': 'hash_key',
-        'AttributeType': 'N'
-    }],
-    TableName='my_new_table',
-    KeySchema=[{
-        'AttributeName': 'hash_key',
-        'KeyType': 'HASH'
-    }],
-    BillingMode='PAY_PER_REQUEST')
+@migrator.create(AttributeDefinitions=[{'AttributeName': 'hash_key', 'AttributeType': 'N'}],
+                 TableName='my_new_table',
+                 KeySchema=[{'AttributeName': 'hash_key', 'KeyType': 'HASH'}],
+                 BillingMode='PAY_PER_REQUEST')
 def v1(created_table):
     print("Table created using the kwargs provided")
     print("Note that the keyword-args are passed onto boto as is")
     print(created_table)
 
 
-@NotYetImplemented
 @migrator.version(2)
-@migrator.add_index("secondary_index_we_forgot_about")
-def v2(migrate):
-    print("About to:")
-    print(" - Create new table (first_table_v2) with the appropriate index")
-    print(" - Create DynamoDB Stream on 'first_table' that copies changes into the new table")
-    print(" - Execute a script that automatically updates all existing data")
-    print("   (This will trigger all data in 'first_table' to be copied into the new table")
-    migrate()
-    print("Table with new index is ready to use")
+@migrator.add_index(AttributeDefinitions=[{'AttributeName': 'postcode', 'AttributeType': 'S'}],
+                    LocalSecondaryIndexes=[{'IndexName': 'string',
+                                            'KeySchema': [{'AttributeName': 'customer_nr', 'KeyType': 'HASH'},
+                                                          {'AttributeName': 'postcode', 'KeyType': 'RANGE'}],
+                                            'Projection': {'ProjectionType': 'ALL'}}])
+def v2(created_table):
+    print("Created a new table with the new index")
+    print("Created a DynamoDB stream that sends all updates to the old table to a custom Lambda-function")
+    print("The custom Lambda-function sends all updates to the new table")
+    print(created_table)
 
 
 @NotYetImplemented

@@ -1,10 +1,9 @@
 #!/usr/bin/python
 
 from migrator.dynamodb_migrator import Migrator
-from uuid import uuid4
 
 
-table_name = str(uuid4())
+table_name = 'simple_table'
 migrator = Migrator()
 
 
