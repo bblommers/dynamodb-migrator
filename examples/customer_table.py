@@ -6,32 +6,10 @@ from time import sleep
 
 
 dynamodb = boto3.client('dynamodb')
+iam = boto3.client('iam')
+lmbda = boto3.client('lambda')
 table_name = 'customers'
 migrator = Migrator(identifier='make examples/customer_table.py')
-
-
-@migrator.version(1)
-@migrator.create(
-    AttributeDefinitions=[{
-        'AttributeName': 'customer_nr',
-        'AttributeType': 'N'
-    }],
-    TableName=table_name,
-    KeySchema=[{
-        'AttributeName': 'customer_nr',
-        'KeyType': 'HASH'
-    }],
-    BillingMode='PAY_PER_REQUEST')
-def v1(created_table):
-    assert created_table['TableName'] == table_name
-    assert created_table['TableStatus'] == 'ACTIVE'
-    print("===================")  # noqa: T001
-    print("Script has finished")  # noqa: T001
-    print("We can now use the created table as appropriate")  # noqa: T001
-    print("As this is only an example, we'll delete the tables again, so that we're not incurring unexpected costs")  # noqa: T001
-    print("This might take a while...")  # noqa: T001
-    delete_table(table_name)
-    delete_table('dynamodb_migrator_metadata')
 
 
 def delete_table(name):
@@ -45,4 +23,48 @@ def delete_table(name):
         pass
 
 
-migrator.migrate()
+def delete_tables(names):
+    for name in names:
+        delete_table(name)
+
+
+def delete_created_services():
+    created_items = dynamodb.scan(TableName='dynamodb_migrator_metadata')['Items'][0]['2']['M']
+    lmbda.delete_event_source_mapping(UUID=created_items['mapping']['S'])
+    lmbda.delete_function(FunctionName=created_items['lambda']['S'])
+    iam.detach_role_policy(RoleName=created_items['role_name']['S'], PolicyArn=created_items['policy']['S'])
+    iam.delete_policy(PolicyArn=created_items['policy']['S'])
+    iam.delete_role(RoleName=created_items['role_name']['S'])
+    delete_tables(['dynamodb_migrator_metadata', 'customers', 'customers_V2'])
+
+
+@migrator.version(1)
+@migrator.create(
+    AttributeDefinitions=[{'AttributeName': 'customer_nr', 'AttributeType': 'N'},
+                          {'AttributeName': 'last_name', 'AttributeType': 'S'}],
+    TableName=table_name,
+    KeySchema=[{'AttributeName': 'customer_nr', 'KeyType': 'HASH'},
+               {'AttributeName': 'last_name', 'KeyType': 'RANGE'}],
+    BillingMode='PAY_PER_REQUEST')
+def v1(created_table):
+    assert created_table['TableName'] == table_name
+    assert created_table['TableStatus'] == 'ACTIVE'
+    print("===================")  # noqa: T001
+    print("Script has finished")  # noqa: T001
+    print("We can now use the created table as appropriate")  # noqa: T001
+    print("Several months later.. we've forgotten to add an index!")  # noqa: T001
+
+
+@migrator.version(2)
+@migrator.add_indexes(AttributeDefinitions=[{'AttributeName': 'postcode', 'AttributeType': 'S'}],
+                      LocalSecondaryIndexes=[{'IndexName': 'postcode_index',
+                                              'KeySchema': [{'AttributeName': 'customer_nr', 'KeyType': 'HASH'},
+                                                            {'AttributeName': 'postcode', 'KeyType': 'RANGE'}],
+                                              'Projection': {'ProjectionType': 'ALL'}}])
+def v2(updated_table):
+    print("Script will now have created a new table with the necessary index added to it")  # noqa: T001
+    print("All data from the old table has also been send to the new table")  # noqa: T001
+    print("As this is only an example, we'll delete everything from AWS, so that we're not incurring unexpected costs")  # noqa: T001
+    print("This might take a while...")  # noqa: T001
+    delete_created_services()
+    print("All tables/functions/roles/policies have been deleted!")  # noqa: T001

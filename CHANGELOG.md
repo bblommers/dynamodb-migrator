@@ -1,4 +1,6 @@
 ### Unreleased
+
+### 0.0.4
  - [x] Fixes release bug where not all source-files are packaged ([#10](/../../issues/10))
 
 ### 0.0.3
