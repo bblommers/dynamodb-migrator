@@ -31,7 +31,7 @@ setuptools.setup(
     long_description=read('README.md'),
     long_description_content_type="text/markdown",
     url="https://github.com/bblommers/dynamodb-migrator",
-    packages = ['migrator'],
+    packages = setuptools.find_namespace_packages(where='src'),
     package_dir = {'': 'src'},
     classifiers=[
         "Programming Language :: Python :: 3",
