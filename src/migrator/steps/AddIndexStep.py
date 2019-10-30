@@ -2,6 +2,7 @@ from migrator.steps.Step import Step
 from migrator.utilities.DynamoDButilities import DynamoDButilities
 from migrator.utilities.IAMutilities import IAMutilities
 from migrator.utilities.LambdaUtilities import LambdaUtilities
+from migrator.utilities.Utilities import logger
 from time import sleep
 
 
@@ -17,7 +18,7 @@ class AddIndexStep(Step):
         super().__init__()
 
     def execute(self):
-        self._logger.debug(f"Adding Index with properties '{self._properties}'")
+        logger.debug(f"Adding Index with properties '{self._properties}'")
         # TODO: Check whether table already exists
         previous_version = self._version - 1
         metadata = self._get_metadata()
@@ -27,7 +28,7 @@ class AddIndexStep(Step):
         new_table = self.ddb_utils.get_table_creation_details(previous_table, new_table_name,
                                                               local_indexes=self._properties['LocalSecondaryIndexes'],
                                                               attr_definitions=self._properties['AttributeDefinitions'])
-        self._logger.debug(f"Creating new table with properties: {new_table}")
+        logger.debug(f"Creating new table with properties: {new_table}")
         # CREATE table based on old table
         created_table = self._dynamodb.create_table(**new_table)['TableDescription']
         status = 'CREATING'
@@ -38,7 +39,6 @@ class AddIndexStep(Step):
         # Create Role
         created_policy, created_role = self.iam_utils.create_iam_items(created_table, new_table_name,
                                                                        previous_table, previous_table_name)
-        sleep(10)
         # Create Lambda
         func = self.lambda_utils.create_aws_lambda(created_role, created_table, previous_table_name)
         # Create stream
@@ -51,9 +51,8 @@ class AddIndexStep(Step):
         while mapping['State'] != 'Enabled':
             mapping = self._lambda.get_event_source_mapping(UUID=mapping['UUID'])
             sleep(1)
-        self._logger.info(f"Created stream: {mapping}")
-        sleep(120)
-        self._logger.info(f"Created table {new_table_name}")
+        logger.info(f"Created stream: {mapping}")
+        logger.info(f"Created table {new_table_name}")
         # Update metadata table
         self._dynamodb.update_item(
             TableName=self._metadata_table_name,

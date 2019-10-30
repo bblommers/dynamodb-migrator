@@ -1,4 +1,5 @@
 from migrator.steps.Step import Step
+from migrator.utilities.Utilities import logger
 from time import sleep
 
 
@@ -11,9 +12,9 @@ class CreateTableStep(Step):
 
     def execute(self):
         table_name = self._properties['TableName']
-        self._logger.debug(f"Creating table '{table_name}'")
+        logger.debug(f"Creating table '{table_name}'")
         if self._table_exists():
-            self._logger.debug(f"Table with identifier '{self._identifier}' has already been created")
+            logger.debug(f"Table with identifier '{self._identifier}' has already been created")
             created_table = self._dynamodb.describe_table(TableName=table_name)['Table']
         else:
             self._properties['StreamSpecification'] = {'StreamEnabled': True,
@@ -30,7 +31,7 @@ class CreateTableStep(Step):
                 created_table = self._dynamodb.describe_table(TableName=table_name)['Table']
                 status = created_table['TableStatus']
                 sleep(1)
-            self._logger.info(f"Created table '{table_name}'")
+            logger.info(f"Created table '{table_name}'")
         return created_table
 
     def _table_exists(self):

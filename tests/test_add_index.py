@@ -1,6 +1,11 @@
+import logging
 from time import sleep
+from tenacity import before_sleep_log, retry, wait_exponential
+from migrator.utilities.Utilities import logger
 from mock_wrapper import aws_integration_test, mock_aws
 from uuid import uuid4
+
+customer_nrs = [str(uuid4()) for _ in range(0, 10)]
 
 
 @mock_aws
@@ -37,26 +42,14 @@ def test_add_index_script__assert_metadata_table_is_updated(dynamodb, lmbda, iam
 @aws_integration_test
 def test_add_index_script__assert_data_is_send_through(dynamodb, lmbda, iam):
     import migration_scripts.add_index.table_stream_items  # noqa
-    cust_nr = str(uuid4())
-    dynamodb.put_item(
-        TableName='customers',
-        Item={
-            'customer_nr': {'S': cust_nr},
-            'last_name': {'S': 'Smith'},
-            'postcode': {'S': 'PC12'}
-        })
-    sleep(15)
+    #
+    # Sleep for some time - make sure that the stream is up and running
+    sleep(120)
+    insert_random_data(dynamodb)
     #
     # Assert the new table has the items created in the first table
     try:
-        items = dynamodb.scan(TableName='customers_V2')['Items']
-        assert items == [{'last_name': {'S': 'Smith'},
-                          'customer_nr': {'S': cust_nr},
-                          'postcode': {'S': 'PC12'}}]
-        indexed_items = dynamodb.scan(TableName='customers_V2', IndexName='postcode_index')['Items']
-        assert indexed_items == [{'last_name': {'S': 'Smith'},
-                                  'postcode': {'S': 'PC12'},
-                                  'customer_nr': {'S': cust_nr}}]
+        verify_random_data(dynamodb)
     finally:
         delete_created_services(dynamodb=dynamodb, iam=iam, lmbda=lmbda)
 
@@ -64,7 +57,19 @@ def test_add_index_script__assert_data_is_send_through(dynamodb, lmbda, iam):
 @aws_integration_test
 def test_add_index_script__assert_existing_data_is_replicated(dynamodb, lmbda, iam):
     import migration_scripts.add_index.table_copy_items_v1  # noqa
-    customer_nrs = [str(uuid4()) for _ in range(0, 10)]
+    insert_random_data(dynamodb)
+    # Update table
+    import migration_scripts.add_index.table_copy_items_v2 # noqa
+    #
+    # Assert the new table has the items created in the first table
+    try:
+        verify_random_data(dynamodb)
+    finally:
+        #
+        delete_created_services(dynamodb=dynamodb, iam=iam, lmbda=lmbda)
+
+
+def insert_random_data(dynamodb):
     for cust_nr in customer_nrs:
         dynamodb.put_item(TableName='customers',
                           Item={
@@ -72,19 +77,16 @@ def test_add_index_script__assert_existing_data_is_replicated(dynamodb, lmbda, i
                               'last_name': {'S': 'Smith'},
                               'postcode': {'S': 'PC12'}
                           })
-    # Update table
-    import migration_scripts.add_index.table_copy_items_v2 # noqa
-    #
-    # Assert the new table has the items created in the first table
-    try:
-        items = dynamodb.scan(TableName='customers_V2')['Items']
-        assert len(items) == len(customer_nrs)
-        assert [item['customer_nr']['S'] for item in items].sort() == customer_nrs.sort()
-        indexed_items = dynamodb.scan(TableName='customers_V2', IndexName='postcode_index')['Items']
-        assert len(indexed_items) == len(customer_nrs)
-    finally:
-        #
-        delete_created_services(dynamodb=dynamodb, iam=iam, lmbda=lmbda)
+    sleep(10)
+
+
+@retry(wait=wait_exponential(multiplier=1, min=2, max=120), before_sleep=before_sleep_log(logger, logging.DEBUG))
+def verify_random_data(dynamodb):
+    items = dynamodb.scan(TableName='customers_V2')['Items']
+    assert len(items) == len(customer_nrs)
+    assert [item['customer_nr']['S'] for item in items].sort() == customer_nrs.sort()
+    indexed_items = dynamodb.scan(TableName='customers_V2', IndexName='postcode_index')['Items']
+    assert len(indexed_items) == len(customer_nrs)
 
 
 @mock_aws

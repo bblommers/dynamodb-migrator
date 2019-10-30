@@ -1,8 +1,10 @@
-from time import sleep
+import logging
+from tenacity import before_sleep_log, retry, wait_exponential
 from string import Template
+from migrator.utilities.Utilities import logger
 
 
-class IAMutilities():
+class IAMutilities:
 
     _lambda_stream_policy = Template("""{
     "Version": "2012-10-17",
@@ -58,7 +60,10 @@ class IAMutilities():
         created_role = self._iam.create_role(RoleName='dynamodb_migrator_' + previous_table_name,
                                              AssumeRolePolicyDocument=self._lambda_stream_assume_role,
                                              Description='Role' + desc)
-        sleep(15)
+        self.attach_policy_to_role(created_policy, created_role)
+        return created_policy, created_role
+
+    @retry(wait=wait_exponential(multiplier=1, min=2, max=10), before_sleep=before_sleep_log(logger, logging.DEBUG))
+    def attach_policy_to_role(self, created_policy, created_role):
         self._iam.attach_role_policy(PolicyArn=created_policy['Policy']['Arn'],
                                      RoleName=created_role['Role']['RoleName'])
-        return created_policy, created_role
