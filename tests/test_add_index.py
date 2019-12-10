@@ -1,8 +1,9 @@
 import logging
 from time import sleep
 from tenacity import before_sleep_log, retry, wait_exponential
-from migrator.utilities.Utilities import logger
+from migrator.utilities.Utilities import logger, metadata_table_name
 from mock_wrapper import aws_integration_test, mock_aws
+from utilities import delete_tables
 from uuid import uuid4
 
 customer_nrs = [str(uuid4()) for _ in range(0, 10)]
@@ -13,16 +14,13 @@ def test_add_index_script__assert_metadata_table_is_updated(dynamodb, lmbda, iam
     import tests.migration_scripts.add_index.simple_index # noqa
     #
     # Ensure that all details are recorded in our metadata table
-    metadata_table = dynamodb.scan(TableName='dynamodb_migrator_metadata')['Items'][0]
+    metadata_table = dynamodb.scan(TableName=metadata_table_name)['Items'][0]
     assert metadata_table['identifier'] == {'S': 'simple_index'}
-    assert metadata_table['1']['S'] == 'customers'
-    assert metadata_table['2']['M']['table']['S'] == 'customers_V2'
-    assert 'policy' in metadata_table['2']['M']
-    assert 'role' in metadata_table['2']['M']
-    assert 'role_name' in metadata_table['2']['M']
-    assert 'stream' in metadata_table['2']['M']
-    assert 'mapping' in metadata_table['2']['M']
-    assert 'lambda' in metadata_table['2']['M']
+    assert metadata_table['2']['M']['tables']['SS'][0] == 'customers_V2'
+    assert 'policies' in metadata_table['2']['M']
+    assert 'roles' in metadata_table['2']['M']
+    assert 'mappings' in metadata_table['2']['M']
+    assert 'functions' in metadata_table['2']['M']
     #
     # Assert the new table is created
     new_table = dynamodb.describe_table(TableName='customers_V2')['Table']
@@ -107,51 +105,12 @@ def test_add_index_script__assert_existing_streams_still_exist(dynamodb, lmbda, 
 
 
 def delete_created_services(dynamodb, iam, lmbda):
-    created_items = dynamodb.scan(TableName='dynamodb_migrator_metadata')['Items'][0]['2']['M']
-    lmbda.delete_event_source_mapping(UUID=created_items['mapping']['S'])
-    lmbda.delete_function(FunctionName=created_items['lambda']['S'])
-    iam.detach_role_policy(RoleName=created_items['role_name']['S'], PolicyArn=created_items['policy']['S'])
-    iam.delete_policy(PolicyArn=created_items['policy']['S'])
-    iam.delete_role(RoleName=created_items['role_name']['S'])
-    delete_tables(dynamodb, ['dynamodb_migrator_metadata', 'customers', 'customers_V2'])
-
-
-def delete_tables(dynamodb, names):
-    for name in names:
-        delete_table(dynamodb, name)
-
-
-def delete_table(dynamodb, name):
-    try:
-        dynamodb.delete_table(TableName=name)
-        while True:
-            dynamodb.describe_table(TableName=name)
-            sleep(1)
-    except dynamodb.exceptions.ResourceNotFoundException:
-        # Table might not exist (anymore)
-        pass
-
-
-def delete_policies(iam, arns):
-    for arn in arns:
-        iam.delete_policy(PolicyArn=arn)
-
-
-def delete_roles(iam, names):
-    for name in names:
-        iam.delete_role(RoleName=name)
-
-
-def detach_role_policies(iam, role_policies):
-    for role, policy in role_policies:
-        iam.detach_role_policy(RoleName=role, PolicyArn=policy)
-
-
-def delete_mappings(lmbda, mappings):
-    for uuid in mappings:
-        lmbda.delete_event_source_mapping(UUID=uuid)
-
-
-def delete_functions(lmbda, functions):
-    for name in functions:
-        lmbda.delete_function(FunctionName=name)
+    created_items = dynamodb.scan(TableName=metadata_table_name)['Items'][0]['2']['M']
+    lmbda.delete_event_source_mapping(UUID=created_items['mappings']['SS'][0])
+    lmbda.delete_function(FunctionName=created_items['functions']['SS'][0])
+    role_arn = created_items['roles']['SS'][0]
+    role_name = role_arn[role_arn.rindex('/') + 1:]
+    iam.detach_role_policy(RoleName=role_name, PolicyArn=created_items['policies']['SS'][0])
+    iam.delete_policy(PolicyArn=created_items['policies']['SS'][0])
+    iam.delete_role(RoleName=role_name)
+    delete_tables(dynamodb, [metadata_table_name, 'customers', 'customers_V2'])

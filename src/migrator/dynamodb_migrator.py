@@ -1,13 +1,11 @@
 import os
 from migrator.exceptions.MigratorScriptException import MigratorScriptException
-from migrator.steps.BaseStep import BaseStep
 from migrator.steps.CreateTableStep import CreateTableStep
 from migrator.steps.AddIndexStep import AddIndexStep
 from migrator.utilities.Utilities import logger
 
 
-class Migrator():
-    _metadata_table_name = 'dynamodb_migrator_metadata'
+class Migrator:
 
     def __init__(self, identifier = None):
         self._functions = []
@@ -15,7 +13,6 @@ class Migrator():
         self._version = None
         self._current_identifier = identifier if identifier else os.path.basename(__file__)
         self._table_created = False
-        BaseStep().execute()
 
     def version(self, version_number):
         self._version = version_number

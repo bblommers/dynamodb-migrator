@@ -1,6 +1,7 @@
-from time import sleep
 from mock_wrapper import mock_aws
 from migrator.exceptions.MigratorScriptException import MigratorScriptException
+from migrator.utilities.Utilities import metadata_table_name
+from utilities import delete_tables
 
 
 @mock_aws
@@ -13,8 +14,7 @@ def test_create_table_script__assert_table_is_created(dynamodb, lmbda, iam):
     assert len(table_names) >= 1
     assert table_name in table_names
     #
-    delete_table(dynamodb, table_name)
-    delete_table(dynamodb, 'dynamodb_migrator_metadata')
+    delete_tables(dynamodb, [table_name, metadata_table_name])
 
 
 @mock_aws
@@ -32,8 +32,7 @@ def test_create_table_script__assert_table_has_all_properties(dynamodb, lmbda, i
     assert table['ProvisionedThroughput']['ReadCapacityUnits'] == 3
     assert table['ProvisionedThroughput']['WriteCapacityUnits'] == 2
     #
-    delete_table(dynamodb, table_name)
-    delete_table(dynamodb, 'dynamodb_migrator_metadata')
+    delete_tables(dynamodb, [table_name, metadata_table_name])
 
 
 @mock_aws
@@ -44,15 +43,17 @@ def test_create_table_script__assert_metadata_table_is_created(dynamodb, lmbda, 
     # Assert the table is created
     table_names = dynamodb.list_tables()['TableNames']
     assert len(table_names) >= 1
-    assert 'dynamodb_migrator_metadata' in table_names
+    assert metadata_table_name in table_names
     #
     # Assert the correct metadata has been added
-    metadata = dynamodb.scan(TableName='dynamodb_migrator_metadata')['Items']
-    assert metadata == [{'identifier': {'S': 'dynamodb_migrator.py'},
-                         '1': {'S': 'static_table'}}]
+    metadata = dynamodb.scan(TableName=metadata_table_name)['Items']
+    assert len(metadata) == 1
+    assert 'identifier' in metadata[0]
+    assert metadata[0]['identifier']['S'] == 'dynamodb_migrator.py'
+    assert '1' in metadata[0]
+    assert metadata[0]['1'] == {'M': {'tables': {'SS': [table_name]}}}
     #
-    delete_table(dynamodb, table_name)
-    delete_table(dynamodb, 'dynamodb_migrator_metadata')
+    delete_tables(dynamodb, [table_name, metadata_table_name])
 
 
 @mock_aws
@@ -61,16 +62,4 @@ def test_create_table_script__assert_error_when_there_are_multiple_create_statem
         import migration_scripts.create.multiple_create_table # noqa
         assert False, "Script execution should fail, as only a single create-annotation per script is allowed"
     except MigratorScriptException:
-        delete_table(dynamodb, 'multiple_create_table_1')
-        delete_table(dynamodb, 'dynamodb_migrator_metadata')
-
-
-def delete_table(dynamodb, name):
-    try:
-        dynamodb.delete_table(TableName=name)
-        while True:
-            dynamodb.describe_table(TableName=name)
-            sleep(1)
-    except dynamodb.exceptions.ResourceNotFoundException:
-        # Table might not exist (anymore)
-        pass
+        delete_tables(dynamodb, ['multiple_create_table_1', metadata_table_name])
