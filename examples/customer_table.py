@@ -30,8 +30,8 @@ def delete_tables(names):
 
 def delete_created_services():
     created_items = dynamodb.scan(TableName='dynamodb_migrator_metadata')['Items'][0]['2']['M']
-    print("The following items will be deleted:")
-    print(created_items)
+    print("The following items will be deleted:")  # noqa: T001
+    print(created_items)  # noqa: T001
     role_arn = created_items['roles']['SS'][0]
     role_name = role_arn[role_arn.rindex('/') + 1:]
     lmbda.delete_event_source_mapping(UUID=created_items['mappings']['SS'][0])
