@@ -28,6 +28,7 @@ test:
 
 release: check-version check-local-changes venv/bin/activate
 	@. venv/bin/activate ; \
+	pip install twine ; \
 	echo Versioning... ; \
 	awk '{sub(/'[0-9.]+'/,"${VERSION}")}1' src/migrator/__init__.py > temp.txt && mv temp.txt src/migrator/__init__.py; \
 	git add src/migrator/__init__.py ; \
