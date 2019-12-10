@@ -1,2 +1,2 @@
 boto3==1.9.236
-dynamodb-migrator==0.0.4
+dynamodb-migrator==0.0.5

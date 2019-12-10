@@ -41,5 +41,8 @@ setuptools.setup(
         "Topic :: Software Development :: Libraries",
         "Topic :: Utilities"
     ],
+    install_requires=[
+        'tenacity',
+    ],
     python_requires='>=3.6',
 )
