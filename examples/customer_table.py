@@ -30,11 +30,15 @@ def delete_tables(names):
 
 def delete_created_services():
     created_items = dynamodb.scan(TableName='dynamodb_migrator_metadata')['Items'][0]['2']['M']
-    lmbda.delete_event_source_mapping(UUID=created_items['mapping']['S'])
-    lmbda.delete_function(FunctionName=created_items['lambda']['S'])
-    iam.detach_role_policy(RoleName=created_items['role_name']['S'], PolicyArn=created_items['policy']['S'])
-    iam.delete_policy(PolicyArn=created_items['policy']['S'])
-    iam.delete_role(RoleName=created_items['role_name']['S'])
+    print("The following items will be deleted:")
+    print(created_items)
+    role_arn = created_items['roles']['SS'][0]
+    role_name = role_arn[role_arn.rindex('/') + 1:]
+    lmbda.delete_event_source_mapping(UUID=created_items['mappings']['SS'][0])
+    lmbda.delete_function(FunctionName=created_items['functions']['SS'][0])
+    iam.detach_role_policy(RoleName=role_name, PolicyArn=created_items['policies']['SS'][0])
+    iam.delete_policy(PolicyArn=created_items['policies']['SS'][0])
+    iam.delete_role(RoleName=role_name)
     delete_tables(['dynamodb_migrator_metadata', 'customers', 'customers_V2'])
 
 

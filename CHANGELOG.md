@@ -1,5 +1,8 @@
 ### Unreleased
  - [ ] 
+ 
+### 0.0.6
+ - [x] Add dependencies that weren't automatically packaged with 0.0.5
 
 ### 0.0.5
  - [x] Automatic rollback when an AWS call fails ([#9](/../../issues/9))
