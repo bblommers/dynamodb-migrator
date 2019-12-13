@@ -107,8 +107,8 @@ def test_rollback_when_creating_invalid_lambda(dynamodb, lmbda, iam):
         aws_util.create_aws_lambda(invalid_role, 'table_name')
         assert False, "Creating AWS Lambda with an invalid role should fail"
     except ClientError as e:
-        if e.response['Error']['Code'] == 'ValidationException':
-            pass  # This is expected to fail, because a table with that name already exists
+        if "Value 'nonsense' at 'role' failed to satisfy constraint" in e.response['Error']['Message']:
+            pass  # This is expected to fail, because the role is invalid
         else:
             raise e
     # assert DynamoDB Table is deleted (which means the AwsUtils.rollback is working

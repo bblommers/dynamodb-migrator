@@ -1,12 +1,16 @@
+import importlib
 import logging
+import os
 from time import sleep
-from tenacity import before_sleep_log, retry, wait_exponential
+from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
+from migrator.utilities.LambdaUtilities import lambda_code, update_boto_client_endpoints, zip
 from migrator.utilities.Utilities import logger, metadata_table_name
-from mock_wrapper import aws_integration_test, mock_aws
+from mock_wrapper import aws_integration_test, mock_aws, mock_server_mode
+from settings import CONNECT_TO_AWS
 from utilities import delete_tables
 from uuid import uuid4
 
-customer_nrs = [str(uuid4()) for _ in range(0, 10)]
+customer_nrs = [str(uuid4()) for _ in range(0, 3)]
 
 
 @mock_aws
@@ -35,19 +39,29 @@ def test_add_index_script__assert_metadata_table_is_updated(dynamodb, lmbda, iam
     delete_created_services(dynamodb=dynamodb, iam=iam, lmbda=lmbda)
 
 
-# Moto does not allow mocked Lambda to access mocked DynamoDB - can only verify this against AWS itself
+# Moto does not allow mocked Lambda to access mocked DynamoDB - can only verify this in server mode
 # https://github.com/spulec/moto/issues/1317
-@aws_integration_test
+@mock_server_mode
 def test_add_index_script__assert_data_is_send_through(dynamodb, lmbda, iam):
+    if not CONNECT_TO_AWS:
+        # reload AWS utilities - make sure that boto3 is patched
+        import migrator.utilities.AwsUtilities
+        importlib.reload(migrator.utilities.AwsUtilities)
     import migration_scripts.add_index.table_stream_items  # noqa
-    #
-    # Sleep for some time - make sure that the stream is up and running
-    sleep(120)
-    insert_random_data(dynamodb)
+    # update Lambda when mocking, to point to local MOTO server
+    if not CONNECT_TO_AWS:
+        created_items = dynamodb.scan(TableName=metadata_table_name)['Items'][0]['2']['M']
+        created_function_arn = created_items['functions']['SS'][0]
+        created_function_name = created_function_arn[created_function_arn.rindex(':') + 1:]
+        created_table = dynamodb.describe_table(TableName=created_items['tables']['SS'][0])
+        existing_code = lambda_code.substitute(newtable=created_table['Table']['TableName'])
+        new_code = update_boto_client_endpoints(existing_code, str(os.environ['dynamodb_mock_endpoint_url']))
+        res = lmbda.update_function_code(FunctionName=created_function_name, ZipFile=zip(new_code))
+        lmbda.update_event_source_mapping(UUID=created_items['mappings']['SS'][0], FunctionName=res['FunctionArn'])
     #
     # Assert the new table has the items created in the first table
     try:
-        verify_random_data(dynamodb)
+        insert_and_verify_random_data(dynamodb)
     finally:
         delete_created_services(dynamodb=dynamodb, iam=iam, lmbda=lmbda)
 
@@ -61,7 +75,7 @@ def test_add_index_script__assert_existing_data_is_replicated(dynamodb, lmbda, i
     #
     # Assert the new table has the items created in the first table
     try:
-        verify_random_data(dynamodb)
+        reverify_random_data(dynamodb)
     finally:
         #
         delete_created_services(dynamodb=dynamodb, iam=iam, lmbda=lmbda)
@@ -78,13 +92,23 @@ def insert_random_data(dynamodb):
     sleep(10)
 
 
-@retry(wait=wait_exponential(multiplier=1, min=2, max=120), before_sleep=before_sleep_log(logger, logging.DEBUG))
 def verify_random_data(dynamodb):
     items = dynamodb.scan(TableName='customers_V2')['Items']
     assert len(items) == len(customer_nrs)
     assert [item['customer_nr']['S'] for item in items].sort() == customer_nrs.sort()
     indexed_items = dynamodb.scan(TableName='customers_V2', IndexName='postcode_index')['Items']
     assert len(indexed_items) == len(customer_nrs)
+
+
+@retry(wait=wait_exponential(multiplier=1, min=2, max=2), stop=stop_after_attempt(2), before_sleep=before_sleep_log(logger, logging.DEBUG))
+def reverify_random_data(dynamodb):
+    verify_random_data()
+
+
+@retry(wait=wait_exponential(multiplier=1, min=2, max=120), stop=stop_after_attempt(5), before_sleep=before_sleep_log(logger, logging.DEBUG))
+def insert_and_verify_random_data(dynamodb):
+    insert_random_data(dynamodb)
+    verify_random_data(dynamodb)
 
 
 @mock_aws
