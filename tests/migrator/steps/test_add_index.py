@@ -2,6 +2,7 @@ import importlib
 import logging
 import os
 from time import sleep
+from random import randint
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 from migrator.utilities.LambdaUtilities import lambda_code, update_boto_client_endpoints, zip
 from migrator.utilities.Utilities import logger, metadata_table_name
@@ -42,19 +43,24 @@ def test_add_index_script__assert_metadata_table_is_updated(dynamodb, lmbda, iam
 # Moto does not allow mocked Lambda to access mocked DynamoDB - can only verify this in server mode
 # https://github.com/spulec/moto/issues/1317
 @mock_server_mode
-def test_add_index_script__assert_data_is_send_through(dynamodb, lmbda, iam):
+def test_add_index_script__assert_data_is_send_through_for_multiple_versions(dynamodb, lmbda, iam):
     if not CONNECT_TO_AWS:
         # reload AWS utilities - make sure that boto3 is patched
         import migrator.utilities.AwsUtilities
         importlib.reload(migrator.utilities.AwsUtilities)
-    import migration_scripts.add_index.table_stream_items  # noqa
-    # update Lambda when mocking, to point to local MOTO server
-    if not CONNECT_TO_AWS:
-        update_dynamodb_host_in_lambda(dynamodb, lmbda)
-    #
-    # Assert the new table has the items created in the first table
+    import migration_scripts.add_index.table_stream_items_v1  # noqa
     try:
-        insert_and_verify_random_data(dynamodb)
+        # Create index, and verify data is transferred
+        import migration_scripts.add_index.table_stream_items_v2  # noqa
+        if not CONNECT_TO_AWS:
+            # update Lambda when mocking, to point to local MOTO server
+            update_dynamodb_host_in_lambda(dynamodb, lmbda, version='2')
+        insert_and_verify_random_data(dynamodb, 'customers', 'customers_V2')
+        # Create another index, and verify data is transferred again
+        import migration_scripts.add_index.table_stream_items_v3  # noqa
+        if not CONNECT_TO_AWS:
+            update_dynamodb_host_in_lambda(dynamodb, lmbda, version='3')
+        insert_and_verify_random_data(dynamodb, 'customers_V2', 'customers_V3')
     finally:
         delete_created_services(dynamodb=dynamodb, iam=iam, lmbda=lmbda)
 
@@ -62,31 +68,32 @@ def test_add_index_script__assert_data_is_send_through(dynamodb, lmbda, iam):
 @aws_integration_test
 def test_add_index_script__assert_existing_data_is_replicated(dynamodb, lmbda, iam):
     import migration_scripts.add_index.table_copy_items_v1  # noqa
-    insert_random_data(dynamodb)
+    insert_random_data(dynamodb, 'customers')
     # Update table
     import migration_scripts.add_index.table_copy_items_v2 # noqa
     #
     # Assert the new table has the items created in the first table
     try:
-        reverify_random_data(dynamodb)
+        reverify_random_data(dynamodb, 'customers_V2')
     finally:
         #
         delete_created_services(dynamodb=dynamodb, iam=iam, lmbda=lmbda)
 
 
-def insert_random_data(dynamodb):
+def insert_random_data(dynamodb, table_name):
     for cust_nr in customer_nrs:
-        dynamodb.put_item(TableName='customers',
+        dynamodb.put_item(TableName=table_name,
                           Item={
                               'customer_nr': {'S': cust_nr},
                               'last_name': {'S': 'Smith'},
-                              'postcode': {'S': 'PC12'}
+                              'postcode': {'S': 'PC12'},
+                              'loyalty_points': {'N': str(randint(0, 100))}
                           })
     sleep(10)
 
 
-def verify_random_data(dynamodb):
-    items = dynamodb.scan(TableName='customers_V2')['Items']
+def verify_random_data(dynamodb, table_name):
+    items = dynamodb.scan(TableName=table_name)['Items']
     assert len(items) == len(customer_nrs)
     assert [item['customer_nr']['S'] for item in items].sort() == customer_nrs.sort()
     indexed_items = dynamodb.scan(TableName='customers_V2', IndexName='postcode_index')['Items']
@@ -94,14 +101,14 @@ def verify_random_data(dynamodb):
 
 
 @retry(wait=wait_exponential(multiplier=1, min=2, max=2), stop=stop_after_attempt(2), before_sleep=before_sleep_log(logger, logging.DEBUG))
-def reverify_random_data(dynamodb):
-    verify_random_data()
+def reverify_random_data(dynamodb, table_name):
+    verify_random_data(table_name)
 
 
 @retry(wait=wait_exponential(multiplier=1, min=2, max=120), stop=stop_after_attempt(5), before_sleep=before_sleep_log(logger, logging.DEBUG))
-def insert_and_verify_random_data(dynamodb):
-    insert_random_data(dynamodb)
-    verify_random_data(dynamodb)
+def insert_and_verify_random_data(dynamodb, first_table, second_table):
+    insert_random_data(dynamodb, first_table)
+    verify_random_data(dynamodb, second_table)
 
 
 @mock_aws
@@ -121,8 +128,8 @@ def test_add_index_script__assert_existing_streams_still_exist(dynamodb, lmbda, 
     ...
 
 
-def update_dynamodb_host_in_lambda(dynamodb, lmbda):
-    created_items = dynamodb.scan(TableName=metadata_table_name)['Items'][0]['2']['M']
+def update_dynamodb_host_in_lambda(dynamodb, lmbda, version):
+    created_items = dynamodb.scan(TableName=metadata_table_name)['Items'][0][version]['M']
     created_function_arn = created_items['functions']['SS'][0]
     created_function_name = created_function_arn[created_function_arn.rindex(':') + 1:]
     created_table = dynamodb.describe_table(TableName=created_items['tables']['SS'][0])
@@ -133,7 +140,16 @@ def update_dynamodb_host_in_lambda(dynamodb, lmbda):
 
 
 def delete_created_services(dynamodb, iam, lmbda):
-    created_items = dynamodb.scan(TableName=metadata_table_name)['Items'][0]['2']['M']
+    metadata = dynamodb.scan(TableName=metadata_table_name)['Items'][0]
+    created_items = metadata['2']['M']
+    delete(created_items, iam, lmbda)
+    if '3' in metadata:
+        created_items = dynamodb.scan(TableName=metadata_table_name)['Items'][0]['3']['M']
+        delete(created_items, iam, lmbda)
+    delete_tables(dynamodb, [metadata_table_name, 'customers', 'customers_V2', 'customers_V3'])
+
+
+def delete(created_items, iam, lmbda):
     lmbda.delete_event_source_mapping(UUID=created_items['mappings']['SS'][0])
     lmbda.delete_function(FunctionName=created_items['functions']['SS'][0])
     role_arn = created_items['roles']['SS'][0]
@@ -141,4 +157,3 @@ def delete_created_services(dynamodb, iam, lmbda):
     iam.detach_role_policy(RoleName=role_name, PolicyArn=created_items['policies']['SS'][0])
     iam.delete_policy(PolicyArn=created_items['policies']['SS'][0])
     iam.delete_role(RoleName=role_name)
-    delete_tables(dynamodb, [metadata_table_name, 'customers', 'customers_V2'])

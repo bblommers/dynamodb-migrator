@@ -1,5 +1,5 @@
 ### Unreleased
- - [ ] 
+ - [x] Fixes bug where AddIndex script can't be run twice ([#12](/../../issues/12)) 
  
 ### 0.0.6
  - [x] Add dependencies that weren't automatically packaged with 0.0.5
