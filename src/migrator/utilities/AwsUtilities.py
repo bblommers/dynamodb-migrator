@@ -1,5 +1,6 @@
 import boto3
 import logging
+from migrator.utilities.DynamoDButilities import DynamoDButilities
 from migrator.utilities.IAMutilities import lambda_stream_assume_role, lambda_stream_policy
 from migrator.utilities.LambdaUtilities import get_zipfile
 from migrator.utilities.Utilities import logger, metadata_table_name, metadata_table_properties
@@ -23,39 +24,30 @@ class AwsHistory:
     def __init__(self, identifier, version):
         self._identifier = identifier
         self._version = version
-
-    def _set_operation(self, operation, attr, name):
-        _dynamodb.update_item(
-            TableName=metadata_table_name,
-            Key={'identifier': {'S': self._identifier}},
-            UpdateExpression=operation + " #v.#attr :val",
-            ExpressionAttributeNames={'#v': str(self._version), '#attr': attr},
-            ExpressionAttributeValues={":val": {"SS": [name]}})
+        self._ddb_utils = DynamoDButilities(identifier, version)
 
     def created_table(self, name):
-        self._set_operation("ADD", "tables", name)
+        self._ddb_utils.add_table(name)
 
     def created_policy(self, arn):
-        self._set_operation("ADD", "policies", arn)
+        self._ddb_utils.add_policy(arn)
 
     def created_role(self, arn):
-        self._set_operation("ADD", "roles", arn)
+        self._ddb_utils.add_role(arn)
 
     def created_mapping(self, uuid):
-        self._set_operation("ADD", "mappings", uuid)
+        self._ddb_utils.add_mapping(uuid)
 
     def created_function(self, arn):
-        self._set_operation("ADD", "functions", arn)
+        self._ddb_utils.add_function(arn)
 
     def rollback(self):
         logger.warning("Something went wrong earlier on - rollback was initiated")
-        metadata = _dynamodb.get_item(TableName=metadata_table_name,
-                                      Key={'identifier': {'S': self._identifier}})['Item'][self._version]['M']
-        tables = metadata['tables']['SS'] if 'tables' in metadata else []
-        roles = metadata['roles']['SS'] if 'roles' in metadata else []
-        policies = metadata['policies']['SS'] if 'policies' in metadata else []
-        mappings = metadata['mappings']['SS'] if 'mappings' in metadata else []
-        functions = metadata['functions']['SS'] if 'functions' in metadata else []
+        tables = self._ddb_utils.get_created_tables()
+        roles = self._ddb_utils.get_created_roles()
+        policies = self._ddb_utils.get_created_policies()
+        mappings = self._ddb_utils.get_created_mappings()
+        functions = self._ddb_utils.get_created_functions()
         logger.warning(f"Deleting: Tables: {tables}")
         for name in tables:
             _dynamodb.delete_table(TableName=name)
@@ -65,7 +57,7 @@ class AwsHistory:
                     _dynamodb.describe_table(TableName=name)
                     sleep(1)
                 except _dynamodb.exceptions.ResourceNotFoundException:
-                    self._set_operation("DELETE", "tables", name)
+                    self._ddb_utils.remove_table(name)
                     break
         logger.warning(f"Deleting: Roles: {roles}")
         for arn in roles:
@@ -79,21 +71,21 @@ class AwsHistory:
         logger.warning(f"Deleting: Policies: {policies}")
         for arn in policies:
             _iam.delete_policy(PolicyArn=arn)
-            self._set_operation("DELETE", "policies", arn)
+            self._ddb_utils.remove_policy(arn)
         # And the roles
         logger.warning(f"Deleting: Roles: {roles}")
         for arn in roles:
             name = arn[arn.rindex('/') + 1:]
             _iam.delete_role(RoleName=name)
-            self._set_operation("DELETE", "roles", arn)
+            self._ddb_utils.remove_role(arn)
         logger.warning(f"Deleting: EventSourceMappings: {mappings}")
         for uuid in mappings:
             _lambda.delete_event_source_mapping(UUID=uuid)
-            self._set_operation("DELETE", "mappings", name)
+            self._ddb_utils.remove_mapping(name)
         logger.warning(f"Deleting: Functions: {functions}")
         for name in functions:
             _lambda.delete_function(FunctionName=name)
-            self._set_operation("DELETE", "functions", name)
+            self._ddb_utils.remove_function(name)
 
 
 class AwsUtilities:
@@ -109,7 +101,7 @@ class AwsUtilities:
         my_session = boto3.session.Session()
         self._region = my_session.region_name
         self._identifier = identifier
-        self._version = version
+        self._version = str(version)
         self._history = AwsHistory(self._identifier, self._version)
 
         initial_map = {'M': {}}
@@ -128,7 +120,7 @@ class AwsUtilities:
             self._create_table(metadata_table_properties, keep_history=False)
             # Add version information
             _dynamodb.put_item(TableName=metadata_table_name, Item={'identifier': {'S': self._identifier},
-                                                                    str(version): initial_map})
+                                                                    self._version: initial_map})
 
     def get_region(self):
         return self._region

@@ -1,3 +1,4 @@
+from migrator.utilities.Utilities import metadata_table_name
 
 _accepted_table_properties = ['AttributeDefinitions',
                               'TableName',
@@ -12,7 +13,14 @@ _accepted_index_properties = ["IndexName", "KeySchema", "Projection"]
 
 class DynamoDButilities:
 
-    def get_table_creation_details(self, existing_table: dict, new_table_name: str,
+    def __init__(self, identifier, version):
+        from migrator.utilities.AwsUtilities import _dynamodb
+        self._dynamodb = _dynamodb
+        self._identifier = identifier
+        self._version = str(version)
+
+    @staticmethod
+    def get_table_creation_details(existing_table: dict, new_table_name: str,
                                    local_indexes: [dict], attr_definitions: [dict]):
         new_table = {key: existing_table[key] for key in existing_table if key in _accepted_table_properties}
         if 'LocalSecondaryIndexes' not in new_table:
@@ -28,3 +36,62 @@ class DynamoDButilities:
             del new_table['ProvisionedThroughput']['NumberOfDecreasesToday']
         new_table['TableName'] = new_table_name
         return new_table
+
+    def _set_operation(self, operation, attr, name):
+        self._dynamodb.update_item(
+            TableName=metadata_table_name,
+            Key={'identifier': {'S': self._identifier}},
+            UpdateExpression=operation + " #v.#attr :val",
+            ExpressionAttributeNames={'#v': self._version, '#attr': attr},
+            ExpressionAttributeValues={":val": {"SS": [name]}})
+
+    def get_attr(self, attr, version=None):
+        _version = str(version) if version else self._version
+        item = self._dynamodb.get_item(TableName=metadata_table_name,
+                                       Key={'identifier': {'S': self._identifier}})['Item']
+        return item[_version]['M'][attr]['SS'] if attr in item[_version]['M'] else []
+
+    def add_table(self, name):
+        self._set_operation("ADD", "tables", name)
+
+    def add_policy(self, arn):
+        self._set_operation("ADD", "policies", arn)
+
+    def add_role(self, arn):
+        self._set_operation("ADD", "roles", arn)
+
+    def add_mapping(self, uuid):
+        self._set_operation("ADD", "mappings", uuid)
+
+    def add_function(self, arn):
+        self._set_operation("ADD", "functions", arn)
+
+    def remove_table(self, name):
+        self._set_operation("DELETE", "tables", name)
+
+    def remove_policy(self, arn):
+        self._set_operation("DELETE", "policies", arn)
+
+    def remove_role(self, arn):
+        self._set_operation("DELETE", "roles", arn)
+
+    def remove_mapping(self, uuid):
+        self._set_operation("DELETE", "mappings", uuid)
+
+    def remove_function(self, arn):
+        self._set_operation("DELETE", "functions", arn)
+
+    def get_created_tables(self, version=None):
+        return self.get_attr("tables", version=version)
+
+    def get_created_policies(self):
+        return self.get_attr("policies")
+
+    def get_created_roles(self):
+        return self.get_attr("roles")
+
+    def get_created_functions(self):
+        return self.get_attr("functions")
+
+    def get_created_mappings(self):
+        return self.get_attr("mappings")

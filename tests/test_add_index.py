@@ -50,14 +50,7 @@ def test_add_index_script__assert_data_is_send_through(dynamodb, lmbda, iam):
     import migration_scripts.add_index.table_stream_items  # noqa
     # update Lambda when mocking, to point to local MOTO server
     if not CONNECT_TO_AWS:
-        created_items = dynamodb.scan(TableName=metadata_table_name)['Items'][0]['2']['M']
-        created_function_arn = created_items['functions']['SS'][0]
-        created_function_name = created_function_arn[created_function_arn.rindex(':') + 1:]
-        created_table = dynamodb.describe_table(TableName=created_items['tables']['SS'][0])
-        existing_code = lambda_code.substitute(newtable=created_table['Table']['TableName'])
-        new_code = update_boto_client_endpoints(existing_code, str(os.environ['dynamodb_mock_endpoint_url']))
-        res = lmbda.update_function_code(FunctionName=created_function_name, ZipFile=zip(new_code))
-        lmbda.update_event_source_mapping(UUID=created_items['mappings']['SS'][0], FunctionName=res['FunctionArn'])
+        update_dynamodb_host_in_lambda(dynamodb, lmbda)
     #
     # Assert the new table has the items created in the first table
     try:
@@ -126,6 +119,17 @@ def test_add_index_script__assert_existing_indexes_still_exist(dynamodb, lmbda, 
 @mock_aws
 def test_add_index_script__assert_existing_streams_still_exist(dynamodb, lmbda, iam):
     ...
+
+
+def update_dynamodb_host_in_lambda(dynamodb, lmbda):
+    created_items = dynamodb.scan(TableName=metadata_table_name)['Items'][0]['2']['M']
+    created_function_arn = created_items['functions']['SS'][0]
+    created_function_name = created_function_arn[created_function_arn.rindex(':') + 1:]
+    created_table = dynamodb.describe_table(TableName=created_items['tables']['SS'][0])
+    existing_code = lambda_code.substitute(newtable=created_table['Table']['TableName'])
+    new_code = update_boto_client_endpoints(existing_code, str(os.environ['dynamodb_mock_endpoint_url']))
+    res = lmbda.update_function_code(FunctionName=created_function_name, ZipFile=zip(new_code))
+    lmbda.update_event_source_mapping(UUID=created_items['mappings']['SS'][0], FunctionName=res['FunctionArn'])
 
 
 def delete_created_services(dynamodb, iam, lmbda):
