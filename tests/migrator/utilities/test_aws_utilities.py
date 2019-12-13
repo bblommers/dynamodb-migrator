@@ -5,7 +5,7 @@ from migrator.utilities.IAMutilities import lambda_stream_assume_role, lambda_st
 from migrator.utilities.Utilities import metadata_table_name
 from time import sleep
 from uuid import uuid4
-from utilities import delete_tables, delete_policies, delete_roles
+from delete_utilities import delete_tables, delete_policies, delete_roles
 
 
 table_name = str(uuid4())

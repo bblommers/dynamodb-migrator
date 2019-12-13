@@ -7,7 +7,7 @@ from migrator.utilities.LambdaUtilities import lambda_code, update_boto_client_e
 from migrator.utilities.Utilities import logger, metadata_table_name
 from mock_wrapper import aws_integration_test, mock_aws, mock_server_mode
 from settings import CONNECT_TO_AWS
-from utilities import delete_tables
+from delete_utilities import delete_tables
 from uuid import uuid4
 
 customer_nrs = [str(uuid4()) for _ in range(0, 3)]

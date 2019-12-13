@@ -1,5 +1,5 @@
 from mock_wrapper import mock_aws
-from utilities import delete_tables
+from delete_utilities import delete_tables
 from migrator.utilities.AwsUtilities import AwsUtilities
 from migrator.utilities.DynamoDButilities import DynamoDButilities
 from migrator.utilities.Utilities import metadata_table_name

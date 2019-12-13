@@ -1,7 +1,7 @@
 from mock_wrapper import mock_aws
 from migrator.exceptions.MigratorScriptException import MigratorScriptException
 from migrator.utilities.Utilities import metadata_table_name
-from utilities import delete_tables
+from delete_utilities import delete_tables
 
 
 @mock_aws
