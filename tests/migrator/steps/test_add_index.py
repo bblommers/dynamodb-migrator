@@ -4,7 +4,9 @@ import os
 from time import sleep
 from random import randint
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
+from migrator.utilities.AwsUtilities import AwsUtilities
 from migrator.utilities.LambdaUtilities import lambda_code, update_boto_client_endpoints, zip
+from migrator.utilities.IAMutilities import lambda_stream_policy
 from migrator.utilities.Utilities import logger, metadata_table_name
 from mock_wrapper import aws_integration_test, mock_aws, mock_server_mode
 from settings import CONNECT_TO_AWS
@@ -123,9 +125,44 @@ def test_add_index_script__assert_existing_indexes_still_exist(dynamodb, lmbda, 
     delete_created_services(dynamodb=dynamodb, iam=iam, lmbda=lmbda)
 
 
-@mock_aws
+@mock_server_mode
 def test_add_index_script__assert_existing_streams_still_exist(dynamodb, lmbda, iam):
-    ...
+    if not CONNECT_TO_AWS:
+        # reload AWS utilities - make sure that boto3 is patched
+        import migrator.utilities.AwsUtilities
+        importlib.reload(migrator.utilities.AwsUtilities)
+    import migration_scripts.add_index.table_with_existing_stream_v1  # noqa
+    aws_utils = AwsUtilities(identifier="table_with_existing_stream", version='1')
+    try:
+        # Create Lambda that listens to the stream
+        table = dynamodb.describe_table(TableName='customers')['Table']
+        policy_document = lambda_stream_policy.substitute(aws_utils.get_region(),
+                                                          oldtable='*',
+                                                          newtable='*')
+        created_policy = aws_utils.create_policy('test_add_index_script__assert_existing_streams_still_exist', policy_document)
+        created_role = aws_utils.create_role(desc='test_add_index_script__assert_existing_streams_still_exist')
+        aws_utils.attach_policy_to_role(created_policy, created_role)
+        func = aws_utils.create_aws_lambda(created_role, table_name='N/A')
+        # Create stream
+        mapping = aws_utils.create_event_source_mapping(stream_arn=table['LatestStreamArn'],
+                                                        function_arn=func['FunctionArn'])
+        # Create new table, and add a stream to the existing table
+        import migration_scripts.add_index.table_with_existing_stream_v2  # noqa
+        if not CONNECT_TO_AWS:
+            # update Lambda when mocking, to point to local MOTO server
+            update_dynamodb_host_in_lambda(dynamodb, lmbda, version='2')
+        # Verify we now have to event sources, for our custom lambda and for the AddIndex step
+        mappings = lmbda.list_event_source_mappings(EventSourceArn=table['LatestStreamArn'])
+        assert len(mappings['EventSourceMappings']) == 2
+    finally:
+        delete_created_services(dynamodb=dynamodb, iam=iam, lmbda=lmbda)
+        role_arn = created_role['Role']['Arn']
+        role_name = role_arn[role_arn.rindex('/') + 1:]
+        iam.detach_role_policy(RoleName=role_name, PolicyArn=created_policy['Policy']['Arn'])
+        iam.delete_policy(PolicyArn=created_policy['Policy']['Arn'])
+        iam.delete_role(RoleName=role_name)
+        lmbda.delete_event_source_mapping(UUID=mapping['UUID'])
+        lmbda.delete_function(FunctionName=func['FunctionArn'])
 
 
 def update_dynamodb_host_in_lambda(dynamodb, lmbda, version):
