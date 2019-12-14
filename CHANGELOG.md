@@ -1,4 +1,6 @@
 ### Unreleased
+
+### 0.0.7
  - [x] Fixes bug where AddIndex script can't be run twice ([#12](/../../issues/12)) 
  
 ### 0.0.6
