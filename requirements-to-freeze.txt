@@ -10,7 +10,6 @@ pytest-pythonpath==0.7.3
 
 # MotoServer requirements
 flask
-netifaces
 aiohttp
 
 # Functional requirements
