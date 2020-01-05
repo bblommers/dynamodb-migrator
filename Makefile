@@ -18,7 +18,7 @@ venv_lint: venv/bin/activate
 
 venv_test: venv/bin/activate
 	. venv/bin/activate ; \
-	venv/bin/pytest -s
+	venv/bin/pytest -sv
 
 lint:
 	flake8

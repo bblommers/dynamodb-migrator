@@ -20,6 +20,12 @@ class DynamoDButilities:
         self._version = str(version)
 
     @staticmethod
+    def get_stream_props(table_name):
+        return {'TableName': table_name,
+                'StreamSpecification': {'StreamEnabled': True,
+                                        'StreamViewType': 'NEW_AND_OLD_IMAGES'}}
+
+    @staticmethod
     def get_table_creation_details(existing_table: dict, new_table_name: str,
                                    local_indexes: [dict], attr_definitions: [dict]):
         new_table = {key: existing_table[key] for key in existing_table if key in _accepted_table_properties}
@@ -65,6 +71,9 @@ class DynamoDButilities:
 
     def add_function(self, arn):
         self._set_operation("ADD", "functions", arn)
+
+    def add_attr_name(self, attr_name):
+        self._set_operation("ADD", "attribute_name", attr_name)
 
     def remove_table(self, name):
         self._set_operation("DELETE", "tables", name)

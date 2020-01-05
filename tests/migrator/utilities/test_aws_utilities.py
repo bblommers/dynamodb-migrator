@@ -1,6 +1,9 @@
 from botocore.exceptions import ClientError
+from datetime import datetime
+from dateutil.parser import parse
 from mock_wrapper import mock_aws
 from migrator.utilities.AwsUtilities import AwsUtilities
+from migrator.utilities.DynamoDButilities import DynamoDButilities
 from migrator.utilities.IAMutilities import lambda_stream_assume_role, lambda_stream_policy
 from migrator.utilities.Utilities import metadata_table_name
 from time import sleep
@@ -12,8 +15,7 @@ table_name = str(uuid4())
 table_properties = {'AttributeDefinitions': [{'AttributeName': 'identifier', 'AttributeType': 'S'}],
                     'TableName': table_name,
                     'KeySchema': [{'AttributeName': 'identifier', 'KeyType': 'HASH'}],
-                    'BillingMode': 'PAY_PER_REQUEST',
-                    'StreamSpecification': {'StreamEnabled': True, 'StreamViewType': 'NEW_AND_OLD_IMAGES'}}
+                    'BillingMode': 'PAY_PER_REQUEST'}
 
 
 @mock_aws
@@ -74,6 +76,7 @@ def test_rollback_when_creating_two_tables(dynamodb, lmbda, iam):
     # create something using AwsUtils
     identifier = str(uuid4())
     aws_util = AwsUtilities(identifier=identifier, version='1')
+    created_table = aws_util.update_table(DynamoDButilities.get_stream_props(table_name))
     aws_util.create_iam_items(created_table, created_table)
     # Sanity check that the policy now exists
     expected_iam_policy = get_recorded(dynamodb, identifier, "policies")[0]
@@ -323,6 +326,92 @@ def test_aws_util_create_table_if_not_exists(dynamodb, lmbda, iam):
     #
     # Cleanup
     delete_tables(dynamodb, [metadata_table_name, table_name])
+
+
+@mock_aws
+def test_dynamodb_table_can_be_updated(dynamodb, *_):
+    #
+    # Initialize
+    util = AwsUtilities(identifier=str(uuid4()), version='1')
+    #
+    # Create first table, and verify it exists
+    util.create_table_if_not_exists(table_properties)
+    assert 'StreamSpecification' not in dynamodb.describe_table(TableName=table_name)['Table']
+    #
+    # Update table with stream specification
+    util.update_table(DynamoDButilities.get_stream_props(table_name))
+    #
+    # Assert it exists
+    assert 'StreamSpecification' in dynamodb.describe_table(TableName=table_name)['Table']
+    assert dynamodb.describe_table(TableName=table_name)['Table']['StreamSpecification'] == {'StreamEnabled': True,
+                                                                                             'StreamViewType': 'NEW_AND_OLD_IMAGES'}
+    #
+    # Cleanup
+    delete_tables(dynamodb, [metadata_table_name, table_name])
+
+
+@mock_aws
+def test_dynamodb_table_update_can_be_reverted(dynamodb, *_):
+    #
+    # Initialize
+    util = AwsUtilities(identifier=str(uuid4()), version='1')
+    #
+    # Update table without name
+    util.create_table_if_not_exists(table_properties)
+    try:
+        util.update_table({'StreamSpecification': {'StreamEnabled': True}})
+        assert False, "Updating a table without name should fail"
+    except:  # noqa: E722
+        pass  # Expect exception
+    #
+    # Verify table has been deleted (i.e., rollback is working)
+    assert table_name not in dynamodb.list_tables()['TableNames']
+    #
+    # Cleanup
+    delete_tables(dynamodb, [metadata_table_name])
+
+
+@mock_aws
+def test_update_data(dynamodb, *_):
+    #
+    # Create table
+    util = AwsUtilities(identifier=str(uuid4()), version='1')
+    table = util.create_table_if_not_exists(table_properties)
+    #
+    # Add some data
+    nr_of_items = 300
+    for _ in range(0, nr_of_items):
+        dynamodb.put_item(TableName=table_name, Item={'identifier': {'S': str(uuid4())}})
+    #
+    # Update data
+    util.update_data(table_name, key_schema=table['KeySchema'])
+    #
+    # Update_key will be recorded
+    metadata = dynamodb.scan(TableName=metadata_table_name)['Items'][0]
+    update_key = metadata['1']['M']['attribute_name']['SS'][0]
+    #
+    # Verify data is updated
+    items = [item for item in dynamodb.scan(TableName=table_name)['Items'] if update_key in item]
+    assert len(items) == nr_of_items
+    assert all([parse(item[update_key]['S']) for item in items])
+    #
+    # Clean up
+    delete_tables(dynamodb, [metadata_table_name, table_name])
+
+
+@mock_aws
+def test_update_data__only_updates_non_updated():
+    pass
+
+
+@mock_aws
+def test_update_data__can_be_called_twice():
+    pass
+
+
+@mock_aws
+def test_update_data__only_return_key_attributes():
+    pass
 
 
 def get_metadata(dynamodb, identifier, version):

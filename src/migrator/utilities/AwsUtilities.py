@@ -1,10 +1,12 @@
 import boto3
 import logging
+from boto3.dynamodb.conditions import AttributeNotExists
 from migrator.utilities.DynamoDButilities import DynamoDButilities
 from migrator.utilities.IAMutilities import lambda_stream_assume_role, lambda_stream_policy
 from migrator.utilities.LambdaUtilities import get_zipfile
 from migrator.utilities.Utilities import logger, metadata_table_name, metadata_table_properties
 from tenacity import before_sleep_log, retry, wait_exponential, stop_after_attempt, RetryError
+from datetime import datetime
 from time import sleep
 from uuid import uuid4
 
@@ -13,6 +15,7 @@ _lambda = boto3.client('lambda')
 _iam = boto3.client('iam')
 _sts = boto3.client('sts')
 
+_dynamodb.meta.
 
 class AwsHistory:
 
@@ -146,15 +149,50 @@ class AwsUtilities:
 
     def _create_table(self, properties, keep_history=True):
         _dynamodb.create_table(**properties)
+        created_table = self.wait_for_table(properties)
+        logger.info(f"Successfully created table {properties['TableName']}")
+        if keep_history:
+            self._history.created_table(properties['TableName'])
+        return created_table
+
+    def wait_for_table(self, properties):
         status = 'CREATING'
         while status != 'ACTIVE':
             created_table = self.describe_table(properties['TableName'])['Table']
             status = created_table['TableStatus']
             sleep(1)
-        logger.info(f"Successfully created table {properties['TableName']}")
-        if keep_history:
-            self._history.created_table(properties['TableName'])
         return created_table
+
+    def update_table(self, properties):
+        def _update_table():
+            logger.info(f"Updating table: {properties}")
+            logger.info(f"Current table: {self.describe_table(properties['TableName'])}")
+            _dynamodb.update_table(**properties)
+            updated_table = self.wait_for_table(properties)
+            logger.info(f"Successfully updated table {properties['TableName']}")
+            return updated_table
+        try:
+            return self.retry(_update_table, ())
+        except RetryError as e:
+            self._history.rollback()
+            e.reraise()
+
+    def update_data(self, table_name, key_schema):
+        unique_attr = f"{str(uuid4())}_migration"
+        self._history._ddb_utils.add_attr_name(unique_attr)
+        items = _dynamodb.scan(TableName=table_name, Limit=200)['Items']
+        logger.warning(f"Items in {table_name}: {items}")
+        for item in items:
+            key = {key['AttributeName']: {
+                ([*item[key['AttributeName']]][0]): item[key['AttributeName']][[*item[key['AttributeName']]][0]]} for
+                key in key_schema}
+            _dynamodb.update_item(TableName=table_name,
+                                  Key=key,
+                                  UpdateExpression="set #attr = :val",
+                                  ExpressionAttributeNames={'#attr': unique_attr},
+                                  ExpressionAttributeValues={':val': {'S': str(datetime.today())}})
+        logger.debug(f"Successfully updated data in {table_name}")
+        logger.warning(f"Items in {table_name}: {_dynamodb.scan(TableName=table_name)['Items']}")
 
     def describe_table(self, table_name):
         return _dynamodb.describe_table(TableName=table_name)
