@@ -40,7 +40,9 @@ class AddIndexStep:
             # Create Role
             created_policy, created_role = self.aws_utils.create_iam_items(created_table, previous_table)
             # Create Lambda
-            func = self.aws_utils.create_aws_lambda(created_role, created_table['TableName'])
+            func = self.aws_utils.create_aws_lambda(created_role,
+                                                    old_table=previous_table_name,
+                                                    new_table=created_table['TableName'])
             # Create stream
             self.aws_utils.create_event_source_mapping(stream_arn=previous_table['LatestStreamArn'],
                                                        function_arn=func['FunctionArn'])

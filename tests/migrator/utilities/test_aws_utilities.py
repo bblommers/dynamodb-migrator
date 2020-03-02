@@ -1,5 +1,5 @@
+import pytest
 from botocore.exceptions import ClientError
-from datetime import datetime
 from dateutil.parser import parse
 from mock_wrapper import mock_aws
 from migrator.utilities.AwsUtilities import AwsUtilities
@@ -35,7 +35,7 @@ def test_table_can_be_created(dynamodb, _, __):
 @mock_aws
 def test_iam_policy_can_be_created_without_name(dynamodb, _, iam):
     aws_util = AwsUtilities(identifier=str(uuid4()), version='1')
-    policy_document = lambda_stream_policy.substitute(region='', oldtable='*', newtable='*')
+    policy_document = lambda_stream_policy.substitute(region='', oldtable='*', oldtablestream='*', newtable='*')
     policy = aws_util.create_policy(desc=str(uuid4()), policy_document=policy_document)
     #
     # Assert policy is created
@@ -52,7 +52,7 @@ def test_iam_policy_can_be_created_without_name(dynamodb, _, iam):
 def test_iam_policy_can_be_created_with_name(dynamodb, _, iam):
     policy_name = str(uuid4())
     aws_util = AwsUtilities(identifier=str(uuid4()), version='1')
-    policy_document = lambda_stream_policy.substitute(region='', oldtable='*', newtable='*')
+    policy_document = lambda_stream_policy.substitute(region='', oldtable='*', oldtablestream='*', newtable='*')
     policy = aws_util.create_policy(desc=str(uuid4()), policy_document=policy_document, policy_name=policy_name)
     #
     # Assert policy is created
@@ -107,7 +107,7 @@ def test_rollback_when_creating_invalid_lambda(dynamodb, lmbda, iam):
     assert table_name in dynamodb.list_tables()['TableNames']
     # Try to create Lambda, this time using AwsUtils
     try:
-        aws_util.create_aws_lambda(invalid_role, 'table_name')
+        aws_util.create_aws_lambda(invalid_role, old_table='example', new_table='example')
         assert False, "Creating AWS Lambda with an invalid role should fail"
     except ClientError as e:
         if "Value 'nonsense' at 'role' failed to satisfy constraint" in e.response['Error']['Message']:
@@ -234,7 +234,7 @@ def test_aws_util_can_record_and_rollback_multiple_policies(dynamodb, lmbda, iam
         return sorted([policy['Arn'] for policy in iam.list_policies(Scope='Local', PathPrefix='/dynamodb_migrator/')['Policies']])
     identifier = str(uuid4())
     util = AwsUtilities(identifier=identifier, version='1')
-    policy_document = lambda_stream_policy.substitute(region='', oldtable='*', newtable='*')
+    policy_document = lambda_stream_policy.substitute(region='', oldtable='*', oldtablestream='*', newtable='*')
     policy1 = util.create_policy(desc=str(uuid4()), policy_document=policy_document)['Policy']
     policy2 = util.create_policy(desc=str(uuid4()), policy_document=policy_document)['Policy']
     #
@@ -279,8 +279,8 @@ def test_aws_util_can_record_and_rollback_multiple_functions(dynamodb, lmbda, ia
     created_role = iam.create_role(RoleName=str(uuid4()), AssumeRolePolicyDocument=lambda_stream_assume_role)
     identifier = str(uuid4())
     util = AwsUtilities(identifier=identifier, version='1')
-    fn1 = util.create_aws_lambda(created_role, table_name='ex')['FunctionArn']
-    fn2 = util.create_aws_lambda(created_role, table_name='ex')['FunctionArn']
+    fn1 = util.create_aws_lambda(created_role, old_table='example', new_table='example')['FunctionArn']
+    fn2 = util.create_aws_lambda(created_role, old_table='example', new_table='example')['FunctionArn']
     #
     # Assert functions are recorded
     assert get_existing_functions() == sorted([fn1, fn2])
@@ -371,47 +371,70 @@ def test_dynamodb_table_update_can_be_reverted(dynamodb, *_):
     delete_tables(dynamodb, [metadata_table_name])
 
 
-@mock_aws
-def test_update_data(dynamodb, *_):
-    #
-    # Create table
+@pytest.mark.parametrize(argnames="nr_of_items",
+                         argvalues=[5, 100, 300, 1000],
+                         ids=["test_with_5_items", "with_100_items", "with_300_items", "with_1000_items"])
+def test_update_data(nr_of_items, dynamodb_server_mode):
     util = AwsUtilities(identifier=str(uuid4()), version='1')
-    table = util.create_table_if_not_exists(table_properties)
-    #
-    # Add some data
-    nr_of_items = 300
-    for _ in range(0, nr_of_items):
-        dynamodb.put_item(TableName=table_name, Item={'identifier': {'S': str(uuid4())}})
-    #
-    # Update data
-    util.update_data(table_name, key_schema=table['KeySchema'])
-    #
-    # Update_key will be recorded
-    metadata = dynamodb.scan(TableName=metadata_table_name)['Items'][0]
-    update_key = metadata['1']['M']['attribute_name']['SS'][0]
-    #
-    # Verify data is updated
-    items = [item for item in dynamodb.scan(TableName=table_name)['Items'] if update_key in item]
-    assert len(items) == nr_of_items
-    assert all([parse(item[update_key]['S']) for item in items])
-    #
-    # Clean up
-    delete_tables(dynamodb, [metadata_table_name, table_name])
+    # Ensure we use the dynamodb pointing to server mode
+    original_dynamodb = util._dynamodb
+    util._dynamodb = dynamodb_server_mode
+    try:
+        #
+        # Create table
+        table = util.create_table_if_not_exists(table_properties)
+        #
+        # Add some data
+        for _ in range(0, nr_of_items):
+            util._dynamodb.put_item(TableName=table_name, Item={'identifier': {'S': str(uuid4())}})
+        #
+        # Update data
+        util.update_data(table_name, key_schema=table['KeySchema'])
+        #
+        # Update_key will be recorded
+        metadata = util._dynamodb.scan(TableName=metadata_table_name)['Items'][0]
+        update_key = metadata['1']['M']['attribute_name']['SS'][0]
+        #
+        # Verify data is updated
+        items = [item for item in util._dynamodb.scan(TableName=table_name)['Items'] if update_key in item]
+        assert len(items) == nr_of_items
+        assert all([parse(item[update_key]['S']) for item in items])
+    finally:
+        #
+        # Clean up
+        delete_tables(util._dynamodb, [metadata_table_name, table_name])
+        util._dynamodb = original_dynamodb
 
 
-@mock_aws
-def test_update_data__only_updates_non_updated():
-    pass
-
-
-@mock_aws
-def test_update_data__can_be_called_twice():
-    pass
-
-
-@mock_aws
-def test_update_data__only_return_key_attributes():
-    pass
+def test_update_data__can_be_called_twice(dynamodb_server_mode):
+    nr_of_items = 5
+    util = AwsUtilities(identifier=str(uuid4()), version='1')
+    # Ensure we use the dynamodb pointing to server mode
+    original_dynamodb = util._dynamodb
+    util._dynamodb = dynamodb_server_mode
+    try:
+        #
+        # Create table
+        table = util.create_table_if_not_exists(table_properties)
+        #
+        # Add some data
+        for _ in range(0, nr_of_items):
+            util._dynamodb.put_item(TableName=table_name, Item={'identifier': {'S': str(uuid4())}})
+        #
+        # Update data
+        util.update_data(table_name, key_schema=table['KeySchema'])
+        #
+        # Update data again
+        util.update_data(table_name, key_schema=table['KeySchema'])
+        #
+        # Ensure only single unique key is used
+        metadata = util._dynamodb.scan(TableName=metadata_table_name)['Items'][0]
+        assert len(metadata['1']['M']['attribute_name']['SS']) == 1
+    finally:
+        #
+        # Clean up
+        delete_tables(dynamodb_server_mode, [metadata_table_name, table_name])
+        util._dynamodb = original_dynamodb
 
 
 def get_metadata(dynamodb, identifier, version):

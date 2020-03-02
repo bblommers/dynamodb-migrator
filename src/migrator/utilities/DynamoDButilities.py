@@ -1,3 +1,4 @@
+import boto3
 from migrator.utilities.Utilities import metadata_table_name
 
 _accepted_table_properties = ['AttributeDefinitions',
@@ -14,8 +15,7 @@ _accepted_index_properties = ["IndexName", "KeySchema", "Projection"]
 class DynamoDButilities:
 
     def __init__(self, identifier, version):
-        from migrator.utilities.AwsUtilities import _dynamodb
-        self._dynamodb = _dynamodb
+        self._dynamodb = boto3.client('dynamodb')
         self._identifier = identifier
         self._version = str(version)
 
@@ -92,6 +92,9 @@ class DynamoDButilities:
 
     def get_created_tables(self, version=None):
         return self.get_attr("tables", version=version)
+
+    def get_created_attr(self):
+        return self.get_attr("attribute_name")
 
     def get_created_policies(self):
         return self.get_attr("policies")
