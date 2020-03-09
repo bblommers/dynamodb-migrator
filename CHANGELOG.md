@@ -1,5 +1,9 @@
 ### Unreleased
 
+### 0.0.8
+ - [x] Fixes bug where existing data was not replicated in the new indexed table ([#13](/../../issues/13))
+
+
 ### 0.0.7
  - [x] Fixes bug where AddIndex script can't be run twice ([#12](/../../issues/12)) 
  
