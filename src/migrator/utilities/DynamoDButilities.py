@@ -1,3 +1,4 @@
+import boto3
 from migrator.utilities.Utilities import metadata_table_name
 
 _accepted_table_properties = ['AttributeDefinitions',
@@ -14,10 +15,15 @@ _accepted_index_properties = ["IndexName", "KeySchema", "Projection"]
 class DynamoDButilities:
 
     def __init__(self, identifier, version):
-        from migrator.utilities.AwsUtilities import _dynamodb
-        self._dynamodb = _dynamodb
+        self._dynamodb = boto3.client('dynamodb')
         self._identifier = identifier
         self._version = str(version)
+
+    @staticmethod
+    def get_stream_props(table_name):
+        return {'TableName': table_name,
+                'StreamSpecification': {'StreamEnabled': True,
+                                        'StreamViewType': 'NEW_AND_OLD_IMAGES'}}
 
     @staticmethod
     def get_table_creation_details(existing_table: dict, new_table_name: str,
@@ -66,6 +72,9 @@ class DynamoDButilities:
     def add_function(self, arn):
         self._set_operation("ADD", "functions", arn)
 
+    def add_attr_name(self, attr_name):
+        self._set_operation("ADD", "attribute_name", attr_name)
+
     def remove_table(self, name):
         self._set_operation("DELETE", "tables", name)
 
@@ -83,6 +92,9 @@ class DynamoDButilities:
 
     def get_created_tables(self, version=None):
         return self.get_attr("tables", version=version)
+
+    def get_created_attr(self):
+        return self.get_attr("attribute_name")
 
     def get_created_policies(self):
         return self.get_attr("policies")

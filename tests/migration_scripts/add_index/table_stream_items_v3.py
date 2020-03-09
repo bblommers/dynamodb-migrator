@@ -1,9 +1,9 @@
 #!/usr/bin/python
 
 from migrator.dynamodb_migrator import Migrator
+from migration_scripts.add_index.table_stream_items_v1 import table_name
 
 
-table_name = 'customers'
 migrator = Migrator(identifier="table_stream_test")
 
 

@@ -4,8 +4,9 @@ sudo: true
 python:
 - 3.6
 - 3.7
+- 3.8
 env:
-- CONNECT_TO_AWS=NO
+- CONNECT_TO_AWS=FALSE
 before_install:
 - sudo apt-get install -y ruby-coveralls
 install:

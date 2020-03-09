@@ -27,6 +27,10 @@ class AddIndexStep:
             base_name = self._get_base_name(previous_table_name)
             new_table_name = f"{base_name}_V{self._version}"
             previous_table = self.aws_utils.describe_table(previous_table_name)['Table']
+            if 'StreamSpecification' not in previous_table:
+                # Alter table to add stream
+                self.aws_utils.update_table(DynamoDButilities.get_stream_props(previous_table_name))
+                previous_table = self.aws_utils.describe_table(previous_table_name)['Table']
             new_table = DynamoDButilities.get_table_creation_details(previous_table, new_table_name,
                                                                      local_indexes=self._properties['LocalSecondaryIndexes'],
                                                                      attr_definitions=self._properties['AttributeDefinitions'])
@@ -36,10 +40,14 @@ class AddIndexStep:
             # Create Role
             created_policy, created_role = self.aws_utils.create_iam_items(created_table, previous_table)
             # Create Lambda
-            func = self.aws_utils.create_aws_lambda(created_role, created_table['TableName'])
+            func = self.aws_utils.create_aws_lambda(created_role,
+                                                    old_table=previous_table_name,
+                                                    new_table=created_table['TableName'])
             # Create stream
             self.aws_utils.create_event_source_mapping(stream_arn=previous_table['LatestStreamArn'],
                                                        function_arn=func['FunctionArn'])
+            # Update existing data
+            self.aws_utils.update_data(previous_table_name, key_schema=previous_table['KeySchema'])
         return created_table
 
     def _get_base_name(self, name):

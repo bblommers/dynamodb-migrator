@@ -14,12 +14,18 @@ lambda_stream_policy = Template("""{
     }, {
         "Effect": "Allow",
         "Action": [
+            "dynamodb:UpdateItem"
+        ],
+        "Resource": "$oldtable"
+    }, {
+        "Effect": "Allow",
+        "Action": [
             "dynamodb:GetShardIterator",
             "dynamodb:DescribeStream",
             "dynamodb:ListStreams",
             "dynamodb:GetRecords"
         ],
-        "Resource": "$oldtable"
+        "Resource": "$oldtablestream"
     }, {
         "Effect": "Allow",
         "Action": "logs:*",

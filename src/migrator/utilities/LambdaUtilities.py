@@ -6,27 +6,39 @@ from string import Template
 
 lambda_code = Template("""import boto3
 import json
+from datetime import datetime
 
 dynamodb = boto3.client('dynamodb')
+old_table_name = "$oldtable"
 table_name = "$newtable"
+unique_attr = "$uniqueattr"
 
 
 def copy(event, context):
     for record in event['Records']:
+        key = record['dynamodb']['Keys']
         if record['eventName'] == 'REMOVE':
             response = dynamodb.delete_item(TableName=table_name,
-                                 Key=record['dynamodb']['Keys'])
+                                 Key=key)
         if record['eventName'] == 'INSERT' or record['eventName'] == 'MODIFY':
-            response = dynamodb.put_item(TableName=table_name,
-                              Item=record['dynamodb']['NewImage'])
+            item = record['dynamodb']['NewImage']
+            if unique_attr in item:
+                del item[unique_attr]
+                dynamodb.put_item(TableName=table_name, Item=item)
+            else:
+                dynamodb.update_item(TableName=old_table_name,
+                                     Key=key,
+                                     UpdateExpression="set #attr = :val",
+                                     ExpressionAttributeNames={'#attr': unique_attr},
+                                     ExpressionAttributeValues={':val': {'S': str(datetime.today())}})
     return {
         'statusCode': 200
     }
 """)
 
 
-def get_zipfile(table_name):
-    lambda_content = lambda_code.substitute(newtable=table_name)
+def get_zipfile(old_table, new_table, unique_attr):
+    lambda_content = lambda_code.substitute(oldtable=old_table, newtable=new_table, uniqueattr=unique_attr)
     return zip(lambda_content)
 
 

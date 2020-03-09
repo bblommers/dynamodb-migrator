@@ -1,9 +1,10 @@
 #!/usr/bin/python
 
 from migrator.dynamodb_migrator import Migrator
+from uuid import uuid4
 
 
-table_name = 'customers'
+table_name = str(uuid4())
 migrator = Migrator(identifier="copy_items")
 
 

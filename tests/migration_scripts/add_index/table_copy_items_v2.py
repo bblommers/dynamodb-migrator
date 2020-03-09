@@ -1,9 +1,9 @@
 #!/usr/bin/python
 
 from migrator.dynamodb_migrator import Migrator
+from migration_scripts.add_index.table_copy_items_v1 import table_name
 
 
-table_name = 'customers'
 migrator = Migrator(identifier="copy_items")
 
 
@@ -15,8 +15,7 @@ migrator = Migrator(identifier="copy_items")
                             {'AttributeName': 'last_name', 'KeyType': 'RANGE'}],
                  BillingMode='PAY_PER_REQUEST')
 def v1(created_table):
-    assert created_table['TableName'] == table_name
-    assert created_table['TableStatus'] == 'ACTIVE'
+    pass
 
 
 @migrator.version(2)
@@ -26,5 +25,4 @@ def v1(created_table):
                                                             {'AttributeName': 'postcode', 'KeyType': 'RANGE'}],
                                               'Projection': {'ProjectionType': 'ALL'}}])
 def v2(created_table):
-    assert created_table['TableName'] == f"{table_name}_V2"
-    assert created_table['TableStatus'] == 'ACTIVE'
+    pass
