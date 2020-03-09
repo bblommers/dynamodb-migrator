@@ -193,7 +193,6 @@ def update_dynamodb_host_in_lambda(dynamodb, lmbda, version):
     old_version = str(int(version) - 1)
     first_table = dynamodb.scan(TableName=metadata_table_name)['Items'][0][old_version]['M']['tables']['SS'][0]
     created_items = dynamodb.scan(TableName=metadata_table_name)['Items'][0][version]['M']
-    print(created_items)
     unique_attr = created_items['attribute_name']['SS'][0]
     created_function_arn = created_items['functions']['SS'][0]
     created_function_name = created_function_arn[created_function_arn.rindex(':') + 1:]
